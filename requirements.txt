@@ -212,10 +212,10 @@ starlette==0.36.3
 streamlit>=1.40.0
 sympy==1.12
 tenacity==8.2.3
-tensorboard==2.16.2
+tensorboard>=2.18.0
 tensorboard-data-server==0.7.2
-tensorflow==2.16.1
-tensorflow-io-gcs-filesystem==0.37.0
+tensorflow>=2.18.0
+tensorflow-io-gcs-filesystem>=0.37.0
 termcolor==2.4.0
 Theano==1.0.5
 thinc==8.2.3
