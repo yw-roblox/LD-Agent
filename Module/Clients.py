@@ -114,10 +114,27 @@ class GLMClient():
     def employ(self, SystemPrompt, UserPrompt, name="default"):
         if len(self.lora_paths) > 0:
             self.set_lora(name)
-        TotalPrompt = SystemPrompt + "\n" + UserPrompt
-        tokenized_prompt = self.tokenizer(TotalPrompt, return_tensors="pt").to(self.device)
+        
+        # Use chat template for proper formatting
+        messages = [
+            {"role": "system", "content": SystemPrompt},
+            {"role": "user", "content": UserPrompt}
+        ]
+        
+        prompt = self.tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
+        tokenized_prompt = self.tokenizer(prompt, return_tensors="pt").to(self.device)
 
-        response = self.model.generate(input_ids=tokenized_prompt["input_ids"], max_length=tokenized_prompt["input_ids"].shape[-1] + self.max_output_length)
+        response = self.model.generate(
+            input_ids=tokenized_prompt["input_ids"],
+            attention_mask=tokenized_prompt["attention_mask"],
+            max_new_tokens=self.max_output_length,
+            pad_token_id=self.tokenizer.pad_token_id,
+            eos_token_id=self.tokenizer.eos_token_id,
+        )
         response = response[0, tokenized_prompt["input_ids"].shape[-1]:]
         response = self.tokenizer.decode(response, skip_special_tokens=True)
         

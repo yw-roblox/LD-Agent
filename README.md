@@ -99,7 +99,7 @@ You can adjust the detailed training configs in ```Trainer/configs```.
 
 ### Evaluation
 
-We provide the evaluation implementations on both [ChatGPT](https://chatgpt.com/) and [ChatGLM3-6B](https://huggingface.co/THUDM/chatglm3-6b).
+We provide the evaluation implementations on both [ChatGPT](https://chatgpt.com/) and [ChatGLM3-6B](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507).
 
 **ChatGPT**
 

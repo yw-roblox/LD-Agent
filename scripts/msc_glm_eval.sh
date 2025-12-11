@@ -1,7 +1,7 @@
 #! /usr/bin/env bash
 DATASET_PATH=dataset/MSC
 
-MODEL_PATH=THUDM/chatglm3-6b
+MODEL_PATH=Qwen/Qwen3-4B-Instruct-2507
 SUMMARIZER=logs/models/summarizer
 EXTRACTOR=logs/models/extractor
 GENERATOR=logs/models/generator

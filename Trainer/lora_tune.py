@@ -1,4 +1,5 @@
 # The tuning code refers to https://github.com/THUDM/ChatGLM3/blob/main/finetune_demo/finetune_hf.py.
+# Modified to support Qwen models.
 
 # -*- coding: utf-8 -*-
 
@@ -268,51 +269,63 @@ def process_batch(
         max_input_length: int,
         max_output_length: int,
 ) -> dict[str, list]:
-    batched_tools = batch.get('tools', None)
     batched_conv = batch['conversations']
     batched_input_ids = []
     batched_labels = []
 
-    if batched_tools is None:
-        batched_tools = [None] * len(batched_conv)
-
-    for tools, conv in zip(batched_tools, batched_conv):
-        input_ids, loss_masks = [
-            tokenizer.get_command('[gMASK]'),
-            tokenizer.get_command('sop'),
-        ], [False, False]
-
-        if tools is not None:
-            raise NotImplementedError()
-
+    for conv in batched_conv:
+        # Build the full conversation using chat template
+        messages = []
         for message in conv:
-            if message['role'] in ('system', 'user'):
-                loss_mask_val = False
-            else:
-                loss_mask_val = True
-
-            if message['role'] == 'tool':
-                raise NotImplementedError()
-            else:
-                new_input_ids = tokenizer.build_single_message(
-                    message['role'], '', message['content']
-                )
-                new_loss_masks = [loss_mask_val] * len(new_input_ids)
-
-            input_ids += new_input_ids
-            loss_masks += new_loss_masks
-
-        input_ids.append(tokenizer.eos_token_id)
-        loss_masks = [False, *loss_masks]
+            messages.append({
+                'role': message['role'],
+                'content': message['content']
+            })
+        
+        # Tokenize the full conversation
+        full_text = tokenizer.apply_chat_template(
+            messages, 
+            tokenize=False, 
+            add_generation_prompt=False
+        )
+        full_ids = tokenizer.encode(full_text, add_special_tokens=False)
+        
+        # Build labels: mask non-assistant tokens with -100
         labels = []
-        for input_id, mask in zip(input_ids, loss_masks):
-            if mask:
-                labels.append(input_id)
+        input_ids = []
+        
+        # Build prefix (all messages except last assistant response)
+        prefix_messages = []
+        for i, msg in enumerate(messages):
+            if msg['role'] == 'assistant' and i == len(messages) - 1:
+                # Last message is assistant - this is what we want to predict
+                prefix_text = tokenizer.apply_chat_template(
+                    prefix_messages, 
+                    tokenize=False, 
+                    add_generation_prompt=True
+                )
+                prefix_ids = tokenizer.encode(prefix_text, add_special_tokens=False)
+                
+                # Everything in prefix is masked (-100), rest is labels
+                for j, token_id in enumerate(full_ids):
+                    input_ids.append(token_id)
+                    if j < len(prefix_ids):
+                        labels.append(-100)
+                    else:
+                        labels.append(token_id)
+                break
             else:
-                labels.append(-100)
+                prefix_messages.append(msg)
+        
+        # If no assistant message found, just use the full sequence
+        if not input_ids:
+            input_ids = full_ids
+            labels = [-100] * len(full_ids)
+        
         max_length = max_input_length + max_output_length + 1
         batched_input_ids.append(input_ids[:max_length])
         batched_labels.append(labels[:max_length])
+    
     return {'input_ids': batched_input_ids, 'labels': batched_labels}
 
 
@@ -322,44 +335,44 @@ def process_batch_eval(
         max_input_length: int,
         max_output_length: int,
 ) -> dict[str, list]:
-    batched_tools = batch.get('tools', None)
     batched_conv = batch['conversations']
     batched_input_ids = []
     # To avoid computing loss, we do not provide the `labels` field in the input dictionary.
     batched_output_ids = []
 
-    if batched_tools is None:
-        batched_tools = [None] * len(batched_conv)
-
-    for tools, conv in zip(batched_tools, batched_conv):
-        input_ids = [
-            tokenizer.get_command('[gMASK]'),
-            tokenizer.get_command('sop'),
-        ]
-
-        if tools is not None:
-            raise NotImplementedError()
-
-        for message in conv:
-            if len(input_ids) >= max_input_length:
-                break
-            if message['role'] == 'tool':
-                raise NotImplementedError()
+    for conv in batched_conv:
+        # Separate input messages and assistant response
+        input_messages = []
+        output_content = None
+        
+        for i, message in enumerate(conv):
+            if message['role'] == 'assistant' and i == len(conv) - 1:
+                # Last assistant message is the expected output
+                output_content = message['content']
             else:
-                new_input_ids = tokenizer.build_single_message(
-                    message['role'], '', message['content']
-                )
-                if message['role'] == 'assistant':
-                    output_prompt, output_ids = (
-                        new_input_ids[:1],
-                        new_input_ids[1:],
-                    )
-                    output_ids.append(tokenizer.eos_token_id)
-                    batched_input_ids.append(
-                        input_ids[:max_input_length] + output_prompt[:1]
-                    )
-                    batched_output_ids.append(output_ids[:max_output_length])
-                input_ids += new_input_ids
+                input_messages.append({
+                    'role': message['role'],
+                    'content': message['content']
+                })
+        
+        if output_content is None:
+            continue
+            
+        # Tokenize input with generation prompt
+        input_text = tokenizer.apply_chat_template(
+            input_messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
+        input_ids = tokenizer.encode(input_text, add_special_tokens=False)
+        
+        # Tokenize expected output
+        output_ids = tokenizer.encode(output_content, add_special_tokens=False)
+        output_ids.append(tokenizer.eos_token_id)
+        
+        batched_input_ids.append(input_ids[:max_input_length])
+        batched_output_ids.append(output_ids[:max_output_length])
+    
     return {'input_ids': batched_input_ids, 'output_ids': batched_output_ids}
 
 
@@ -390,8 +403,8 @@ def load_tokenizer_and_model(
             model = AutoModelForCausalLM.from_pretrained(
                 model_dir,
                 trust_remote_code=True,
-                empty_init=False,
-                use_cache=False
+                use_cache=False,
+                torch_dtype="auto",
             )
             model = get_peft_model(model, peft_config)
             model.print_trainable_parameters()
@@ -399,8 +412,8 @@ def load_tokenizer_and_model(
         model = AutoModelForCausalLM.from_pretrained(
             model_dir,
             trust_remote_code=True,
-            empty_init=False,
-            use_cache=False
+            use_cache=False,
+            torch_dtype="auto",
         )
     print_model_size(model)
     return tokenizer, model
@@ -496,11 +509,7 @@ def main(
     ft_config.training_args.generation_config.pad_token_id = (
         tokenizer.pad_token_id
     )
-    ft_config.training_args.generation_config.eos_token_id = [
-        tokenizer.eos_token_id,
-        tokenizer.get_command('<|user|>'),
-        tokenizer.get_command('<|observation|>'),
-    ]
+    ft_config.training_args.generation_config.eos_token_id = tokenizer.eos_token_id
     model.gradient_checkpointing_enable()
     model.enable_input_require_grads()
     trainer = Seq2SeqTrainer(

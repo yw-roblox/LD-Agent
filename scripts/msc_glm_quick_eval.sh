@@ -1,7 +1,7 @@
 #! /usr/bin/env bash
 DATASET_PATH=dataset/MSC
 
-MODEL_PATH=THUDM/chatglm3-6b
+MODEL_PATH=Qwen/Qwen3-4B-Instruct-2507
 GENERATOR=logs/models/generator
 
 DATESTR=`date +%Y%m%d-%H%M%S`

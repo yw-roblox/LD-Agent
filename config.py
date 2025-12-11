@@ -22,7 +22,7 @@ def get_args(description='Config of LD-Agent'):
 
     # client setting
     parser.add_argument('--client', choices=["chatgpt", "chatglm"], default="chatglm", help="Client to use.")    
-    parser.add_argument('--model', type=str, default='gpt-3.5-turbo-1106', help='The model name: gpt-3.5-turbo-1106 for ChatGPT, THUDM/chatglm3-6b for ChatGLM.')
+    parser.add_argument('--model', type=str, default='gpt-3.5-turbo-1106', help='The model name: gpt-3.5-turbo-1106 for ChatGPT, Qwen/Qwen3-4B-Instruct-2507 for ChatGLM.')
     parser.add_argument('--summary_model', type=str, default='default', help='The model for event summary.')   
     parser.add_argument('--persona_model', type=str, default='default', help='The model for persona extraction.')  
     parser.add_argument('--generation_model', type=str, default='default', help='The model for response generation.')       
